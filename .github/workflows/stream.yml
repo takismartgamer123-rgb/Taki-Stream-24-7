@@ -3,12 +3,12 @@ name: Taki Stream DZ 24/7
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */5 * * *"
 
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 320
 
     steps:
       - name: Checkout

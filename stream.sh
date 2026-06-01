@@ -7,7 +7,7 @@ set -euo pipefail
 #   YOUTUBE_STREAM_KEY  - Your YouTube live stream key
 #   YOUTUBE_API_KEY     - YouTube Data API v3 key
 #   YOUTUBE_CHANNEL_ID  - Your YouTube channel ID
-#   LOGO_URL            - URL to your channel logo image
+#   LOGO_URL            - (Optional) Override logo URL — auto-fetched from YouTube if not set
 
 echo "=== Taki Stream DZ 24/7 ==="
 echo "Checking dependencies..."
@@ -33,11 +33,22 @@ if [ ! -f ~/.fonts/NotoColorEmoji.ttf ]; then
 fi
 
 if [ -n "${LOGO_URL:-}" ]; then
+  echo "Downloading logo from LOGO_URL..."
   curl -L "$LOGO_URL" -o logo.png
-  convert logo.png -resize 100x100 logo.png || true
+  magick logo.png -resize 100x100 logo.png || true
 else
-  echo "LOGO_URL not set, skipping logo download."
-  convert -size 100x100 xc:black logo.png || true
+  echo "Fetching channel logo from YouTube API..."
+  CHANNEL_INFO=$(curl -s "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${YOUTUBE_CHANNEL_ID}&key=${YOUTUBE_API_KEY}")
+  AUTO_LOGO_URL=$(echo "$CHANNEL_INFO" | jq -r '.items[0].snippet.thumbnails.high.url // .items[0].snippet.thumbnails.medium.url // .items[0].snippet.thumbnails.default.url // empty')
+  if [ -n "$AUTO_LOGO_URL" ]; then
+    echo "Logo found: $AUTO_LOGO_URL"
+    curl -L "$AUTO_LOGO_URL" -o logo.png
+    magick logo.png -resize 100x100 logo.png || true
+    echo "Logo downloaded and resized successfully."
+  else
+    echo "Could not fetch logo from YouTube API, using blank logo."
+    magick -size 100x100 xc:black logo.png || true
+  fi
 fi
 
 # 1. الاخبار المضحكة DZ 100 خبر

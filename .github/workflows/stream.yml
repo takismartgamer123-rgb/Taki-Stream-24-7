@@ -1,0 +1,145 @@
+name: Taki Stream DZ 24/7
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+jobs:
+  stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Setup
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg jq fonts-dejavu-core
+
+      - name: Stream
+        env:
+          KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        run: |
+          NEWS=(
+          "عاجل: مواطن لقى 50 دج في سروال قديم، راه يخمم يشري بيها قناة يوتيوب"
+          "دراسة: 99% من الجزائريين يضغطو على تخطي الاعلان قبل ما يبدا"
+          "خبر مفرح: الباتري تاعك تكمل يوم كامل اذا ما حلتش فيسبوك"
+          "تنبيه: كي يقولك صاحبك نعيطلك بعد 5 دقايق = ما راحش يعيط"
+          "عاجل: واحد عطس في الدار، سمعوه الجيران في الحومة اللي بعدها"
+          "دراسة: كلمة راني جاي عند الجزائري = مزال ما خرجش من الدار"
+          "خبر: WiFi الجيران هو الانترنت الوطني الحقيقي"
+          "عاجل: القهوة تاع الصباح رجعت اغلى من البترول"
+          "دراسة: 80% من وقت الاجتماعات يضيع في جملة وين كنا حابسين"
+          "خبر: الشارجور اللي تسلفو ما يرجعش، يعتبر شهيد"
+          "عاجل: كي تطيحلك الملعقة = عندك ضياف، كي يطيح التيليفون = عندك مصيبة"
+          "دراسة: كلمة نرقد ساعة ونوض = 4 سوايع نوم عميق"
+          "خبر: اكثر كلمة تخوف الجزائري: جاك السياربي"
+          "عاجل: الميمز هي اللغة الرسمية الثانية في الجزائر"
+          "دراسة: كل جزائري عندو خال في فرنسا حتى و لو ما عندوش"
+          )
+
+          MOTIV=(
+          "ما تستناش الوقت المناسب، دير لايك ضرك"
+          "الـ 1K الاولى صعيبة، من بعد تولي ساهلة معاكم"
+          "كل اشتراك = خطوة لقدام، كل لايك = دفعة للسماء"
+          "اضرب اشتراك وخلي الباقي علينا حنا والزهر"
+          "من الصفر بدينا، للقمة رايحين بيكم"
+          "اضغط الجرس، باه ما تقولش ما علاباليش"
+          "انت السبة اللي مخلية البث هذا شاعل"
+          "احلم كبير، واشترك اكبر"
+          "الطريق لـ 5K يبدا بكليك منك"
+          "كون انت التغيير اللي حاب تشوفو في اليوتيوب"
+          "ما تحقرش روحك، كليك تاعك يصنع الفرق"
+          "اشترك و ردها عليا اذا ما نجحناش مع بعض"
+          "انت مش مجرد رقم، انت خويا في القناة"
+          "النية + الخدمة + دعمتكم = المستحيل يولي ساهل"
+          "القنوات الكبار بداو بصفر كيفنا"
+          )
+
+          GOAL=5000
+          SUBS=0
+          VIEWS=0
+          LEFT=$GOAL
+          PERCENT=0
+          BAR_WIDTH=0
+
+          update_stats() {
+            STATS=$(curl -s "https://www.googleapis.com/youtube/v3/channels?part=statistics&id=$CHANNEL_ID&key=$API_KEY" || echo '{}')
+            SUBS=$(echo "$STATS" | jq -r '.items[0].statistics.subscriberCount // "0"')
+            VIEWS=$(echo "$STATS" | jq -r '.items[0].statistics.viewCount // "0"')
+            if! [[ "$SUBS" =~ ^[0-9]+$ ]]; then SUBS=0; fi
+            if! [[ "$VIEWS" =~ ^[0-9]+$ ]]; then VIEWS=0; fi
+            LEFT=$((GOAL - SUBS))
+            [ $LEFT -lt 0 ] && LEFT=0
+            PERCENT=$((SUBS * 100 / GOAL))
+            [ $PERCENT -gt 100 ] && PERCENT=100
+            BAR_WIDTH=$((800 * PERCENT / 100))
+          }
+
+          update_stats
+
+          while true; do
+            if (( SECONDS % 300 == 0 )); then
+              update_stats
+            fi
+
+            ffmpeg -re -f lavfi -i "color=c=0x0a0a0a:s=1920x1080:r=30" \
+            -vf "drawbox=x=0:y=0:w=1920:h=180:color=0x4a00e0@0.9:t=fill,
+            drawtext=text='🟢 LIVE':fontcolor=0x00ff88:fontsize=48:x=80:y=65,
+            drawtext=text='بث تاكي الرسمي 24/7':fontcolor=white:fontsize=55:x=300:y=60,
+            drawtext=text='%{localtime}':fontcolor=0xffd700:fontsize=40:x=W-tw-80:y=70,
+            drawbox=x=60:y=220:w=900:h=700:color=0x1a1a2e@0.85:t=fill,
+            drawbox=x=60:y=220:w=900:h=80:color=0x00f5ff@1:t=fill,
+            drawtext=text='📊 احصائيات القناة':fontcolor=0x0a0a0a:fontsize=45:x=100:y=235,
+            drawtext=text='Taki DZ':fontcolor=0x00f5ff:fontsize=60:x=100:y=350,
+            drawtext=text='المشتركين':fontcolor=white:fontsize=35:x=100:y=430,
+            drawtext=text='$SUBS':fontcolor=0xff0080:fontsize=90:x=100:y=480,
+            drawtext=text='🎯 الهدف\: $GOAL':fontcolor=white:fontsize=35:x=100:y=620,
+            drawbox=x=100:y=680:w=800:h=40:color=0x333333@1:t=fill,
+            drawbox=x=100:y=680:w=$BAR_WIDTH:h=40:color=0x00ff88@1:t=fill,
+            drawtext=text='$PERCENT%':fontcolor=white:fontsize=30:x=480:y=685,
+            drawtext=text='باقي $LEFT للهدف':fontcolor=0xffd700:fontsize=35:x=100:y=750,
+            drawtext=text='👁️ $VIEWS مشاهدة':fontcolor=0x00f5ff:fontsize=35:x=100:y=820,
+            drawbox=x=1040:y=220:w=820:h=700:color=0x1a1a2e@0.85:t=fill,
+            drawbox=x=1040:y=220:w=820:h=80:color=0xff0080@1:t=fill,
+            drawtext=text='📰 اخبار DZ المضحكة':fontcolor=white:fontsize=45:x=1100:y=235,
+            drawtext=text='${NEWS[0]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='lt(mod(t,225),15)',
+            drawtext=text='${NEWS[1]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),15,30)',
+            drawtext=text='${NEWS[2]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),30,45)',
+            drawtext=text='${NEWS[3]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),45,60)',
+            drawtext=text='${NEWS[4]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),60,75)',
+            drawtext=text='${NEWS[5]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),75,90)',
+            drawtext=text='${NEWS[6]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),90,105)',
+            drawtext=text='${NEWS[7]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),105,120)',
+            drawtext=text='${NEWS[8]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),120,135)',
+            drawtext=text='${NEWS[9]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),135,150)',
+            drawtext=text='${NEWS[10]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),150,165)',
+            drawtext=text='${NEWS[11]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),165,180)',
+            drawtext=text='${NEWS[12]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),180,195)',
+            drawtext=text='${NEWS[13]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),195,210)',
+            drawtext=text='${NEWS[14]}':fontcolor=white:fontsize=28:x=1080:y=340:enable='between(mod(t,225),210,225)',
+            drawbox=x=1080:y=500:w=740:h=5:color=0x4a00e0@1:t=fill,
+            drawtext=text='💪 جرعة تحفيز:':fontcolor=0x00ff88:fontsize=35:x=1080:y=540,
+            drawtext=text='${MOTIV[0]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='lt(mod(t,225),15)',
+            drawtext=text='${MOTIV[1]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),15,30)',
+            drawtext=text='${MOTIV[2]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),30,45)',
+            drawtext=text='${MOTIV[3]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),45,60)',
+            drawtext=text='${MOTIV[4]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),60,75)',
+            drawtext=text='${MOTIV[5]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),75,90)',
+            drawtext=text='${MOTIV[6]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),90,105)',
+            drawtext=text='${MOTIV[7]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),105,120)',
+            drawtext=text='${MOTIV[8]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),120,135)',
+            drawtext=text='${MOTIV[9]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),135,150)',
+            drawtext=text='${MOTIV[10]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),150,165)',
+            drawtext=text='${MOTIV[11]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),165,180)',
+            drawtext=text='${MOTIV[12]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),180,195)',
+            drawtext=text='${MOTIV[13]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),195,210)',
+            drawtext=text='${MOTIV[14]}':fontcolor=white:fontsize=28:x=1080:y=600:enable='between(mod(t,225),210,225)',
+            drawtext=text='دير لايك 😂 | اشترك 🔥':fontcolor=0xaaaaaa:fontsize=30:x=1080:y=750,
+            drawbox=x=0:y=1020:w=1920:h=60:color=0x4a00e0@0.9:t=fill,
+            drawtext=text='🧠 لغز تاكي: ما هو الشيء الذي كلما زاد نقص؟':fontcolor=white:fontsize=35:x=100:y=1035,
+            drawtext=text='جاوب في الكومنت | لغز جديد كل ساعة':fontcolor=0xffd700:fontsize=28:x=100:y=1035+40" \
+            -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 5000k -pix_fmt yuv420p -g 60 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$KEY" || true
+
+            sleep 30
+          done

@@ -174,7 +174,7 @@ while true; do
     -i logo.png \
     -filter_complex "[1]scale=200:200[logo];[0][logo]overlay=(W-w)/2:(H-h)/2,drawtext=text='BOOM!':fontcolor=0xff0080:fontsize=150:x=(w-text_w)/2:y=(h-text_h)/2-50,drawtext=text='وصلنا ${GOAL} مشترك':fontcolor=white:fontsize=60:x=(w-text_w)/2:y=(h-text_h)/2+100" \
     -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -r 1 -g 2 -b:v 1000k -an \
-    -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" &
+    -f flv "rtmps://a.rtmp.youtube.com:443/live2/$YOUTUBE_STREAM_KEY" &
     sleep 300
     kill $! 2>/dev/null || true
   fi
@@ -185,7 +185,7 @@ while true; do
   -filter_complex "[1]scale=100:100[logo];[0][logo]overlay=W-w-50:50,drawbox=x=0:y=0:w=1920:h=180:color=0x4a00e0@0.9:t=fill,drawtext=text='LIVE':fontcolor=0x00ff88:fontsize=48:x=80:y=65,drawtext=text='بث تاكي الرسمي 24/7':fontcolor=white:fontsize=55:x=300:y=60,drawtext=text='%{localtime}':fontcolor=0xffd700:fontsize=40:x=W-tw-80:y=70,drawbox=x=60:y=220:w=900:h=800:color=0x1a1a2e@0.85:t=fill,drawbox=x=60:y=220:w=900:h=80:color=0x00f5ff@1:t=fill,drawtext=text='احصائيات القناة':fontcolor=0x0a0a0a:fontsize=45:x=100:y=235,drawtext=text='Taki':fontcolor=0x00f5ff:fontsize=60:x=100:y=350,drawtext=text='المشتركين':fontcolor=white:fontsize=35:x=100:y=430,drawtext=text='${SUBS}':fontcolor=0xff0080:fontsize=90:x=100:y=480,drawtext=text='الهدف\: ${GOAL}':fontcolor=white:fontsize=35:x=100:y=620,drawbox=x=100:y=680:w=800:h=40:color=0x333333@1:t=fill,drawbox=x=100:y=680:w=${BAR_WIDTH}:h=40:color=0x00ff88@1:t=fill,drawtext=text='${PERCENT}%%':fontcolor=white:fontsize=30:x=480:y=685,drawtext=text='باقي ${LEFT} للهدف':fontcolor=0xffd700:fontsize=35:x=100:y=750,drawtext=text='${VIEWS} مشاهدة':fontcolor=0x00f5ff:fontsize=35:x=100:y=820,drawbox=x=1040:y=200:w=800:h=650:color=0x1a1a2e@0.85:t=fill,drawbox=x=1040:y=200:w=800:h=80:color=0xff0080@1:t=fill,drawtext=text='اخبار DZ المضحكة':fontcolor=white:fontsize=45:x=1100:y=215,drawtext=textfile='/tmp/taki_news.txt':fontcolor=white:fontsize=30:x=1080:y=320,drawbox=x=1080:y=500:w=720:h=5:color=0x4a00e0@1:t=fill,drawtext=text='جرعة تحفيز\:':fontcolor=0x00ff88:fontsize=35:x=1080:y=540,drawtext=textfile='/tmp/taki_motiv.txt':fontcolor=white:fontsize=30:x=1080:y=600,drawtext=text='دير لايك | كومنت':fontcolor=0xaaaaaa:fontsize=30:x=1080:y=750,drawbox=x=0:y=1020:w=1920:h=60:color=0x4a00e0@0.9:t=fill,drawtext=text='لغز تاكي\: ما هو الشيء الذي كلما زاد نقص؟':fontcolor=white:fontsize=35:x=100:y=1035,drawtext=text='جاوب في الكومنت | لغز جديد كل 30 دقيقة':fontcolor=0xffd700:fontsize=28:x=100:y=1075" \
   -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -r 1 -g 2 -b:v 1000k \
   -c:a aac -b:a 32k -ar 44100 \
-  -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
+  -f flv "rtmps://a.rtmp.youtube.com:443/live2/$YOUTUBE_STREAM_KEY" || true
 
   sleep 30
 done

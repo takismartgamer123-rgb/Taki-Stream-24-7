@@ -325,7 +325,7 @@ while true; do
   fi
   printf '%s' "$TICKER_LABEL" > /tmp/taki_ticker_label.txt
 
-  # شاشة BOOM اذا وصلت للهدف
+  # شاشة BOOM اذا وصلت للهدف الكامل
   if [ "$SUBS" -ge "$GOAL" ]; then
     ffmpeg -re -f lavfi -i "color=c=0x0a0a0a:s=1920x1080:r=1" \
     -i logo.png \
@@ -335,6 +335,34 @@ while true; do
     sleep 300
     kill $! 2>/dev/null || true
     continue
+  fi
+
+  # احتفال بكل 10 مشتركين جدد (مثلا 4860، 4870، 4880...)
+  MILESTONE_CHECK=$((SUBS % 10))
+  if [ "$MILESTONE_CHECK" -eq 0 ] && [ "${LAST_MILESTONE:-0}" != "$SUBS" ] && [ "$SUBS" -gt 0 ]; then
+    LAST_MILESTONE="$SUBS"
+    echo "MILESTONE REACHED: $SUBS subscribers! Showing celebration..."
+    printf '%s' "وصلنا لـ ${SUBS} مشترك" > /tmp/taki_milestone.txt
+    ffmpeg -re -f lavfi -i "color=c=0x0a0a0a:s=1920x1080:r=1" \
+    -i logo.png \
+    -filter_complex "
+[1]scale=180:180[logo];[0][logo]overlay=(W-w)/2:80,
+drawbox=x=0:y=0:w=1920:h=1080:color=0x0a0050@0.7:t=fill,
+drawbox=x=310:y=260:w=1300:h=560:color=0x1a0070@0.95:t=fill,
+drawbox=x=310:y=260:w=1300:h=8:color=0xff0080@1:t=fill,
+drawbox=x=310:y=812:w=1300:h=8:color=0xff0080@1:t=fill,
+drawbox=x=310:y=260:w=8:h=560:color=0xff0080@1:t=fill,
+drawbox=x=1602:y=260:w=8:h=560:color=0xff0080@1:t=fill,
+drawtext=text='مبروك':fontcolor=0xffd700:fontsize=130:x=(w-text_w)/2:y=300,
+drawtext=textfile='/tmp/taki_milestone.txt':fontcolor=0xff0080:fontsize=70:x=(w-text_w)/2:y=480,
+drawtext=text='شكرا لكل واحد دعمنا':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=590,
+drawtext=text='الهدف\: 5000 رايحين':fontcolor=0x00ff88:fontsize=40:x=(w-text_w)/2:y=660,
+drawtext=text='دير لايك واشترك الان':fontcolor=0xffd700:fontsize=36:x=(w-text_w)/2:y=730
+" \
+    -t 20 \
+    -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -r 1 -g 2 -b:v 1200k -an \
+    -f flv "rtmps://a.rtmp.youtube.com:443/live2/$YOUTUBE_STREAM_KEY" || true
+    echo "Celebration done, resuming normal stream..."
   fi
 
   # ============================================================

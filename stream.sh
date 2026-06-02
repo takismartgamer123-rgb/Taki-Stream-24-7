@@ -162,28 +162,97 @@ LEFT=$((GOAL - SUBS))
 [ "$LEFT" -lt 0 ] && LEFT=0
 PERCENT=$((SUBS * 100 / GOAL))
 [ "$PERCENT" -gt 100 ] && PERCENT=100
-
 echo "Subscribers: $SUBS / $GOAL  |  Views: $VIEWS"
+
+# ============================================================
+# 6. تهيئة الدردشة الحية
+# ============================================================
+LIVE_CHAT_ID=""
+LIVE_VIDEO_ID=""
+
+# دالة لجلب معرف الدردشة من البث الحي النشط
+fetch_live_chat_id() {
+  local search_json vid vid_json
+  search_json=$(curl -s --max-time 8 \
+    "https://www.googleapis.com/youtube/v3/search?part=id&channelId=${YOUTUBE_CHANNEL_ID}&eventType=live&type=video&key=${YOUTUBE_API_KEY}" \
+    2>/dev/null || true)
+  vid=$(echo "$search_json" | jq -r '.items[0].id.videoId // empty' 2>/dev/null || true)
+  if [ -n "$vid" ] && [ "$vid" != "null" ]; then
+    LIVE_VIDEO_ID="$vid"
+    vid_json=$(curl -s --max-time 8 \
+      "https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${vid}&key=${YOUTUBE_API_KEY}" \
+      2>/dev/null || true)
+    local cid
+    cid=$(echo "$vid_json" | jq -r '.items[0].liveStreamingDetails.activeLiveChatId // empty' 2>/dev/null || true)
+    if [ -n "$cid" ] && [ "$cid" != "null" ]; then
+      LIVE_CHAT_ID="$cid"
+      echo "Live chat ID: $LIVE_CHAT_ID"
+    else
+      echo "Chat ID not found yet (stream may be starting up)"
+    fi
+  else
+    echo "No active live video found yet"
+  fi
+}
+
+# دالة لتنظيف الاسماء من رموز مشكلة لـ ffmpeg
+sanitize_name() {
+  echo "$1" | tr -d "':[]{}\\<>|" | sed 's/[=@#]//g' | cut -c1-22
+}
+
+# دالة لجلب اخر المشاهدين من الدردشة
+fetch_chat_viewers() {
+  [ -z "$LIVE_CHAT_ID" ] && return
+  local msgs_json
+  msgs_json=$(curl -s --max-time 8 \
+    "https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${LIVE_CHAT_ID}&part=authorDetails&maxResults=20&key=${YOUTUBE_API_KEY}" \
+    2>/dev/null || true)
+
+  local raw1 raw2 raw3 raw4 raw5
+  raw1=$(echo "$msgs_json" | jq -r '.items[-1].authorDetails.displayName // ""' 2>/dev/null || true)
+  raw2=$(echo "$msgs_json" | jq -r '.items[-2].authorDetails.displayName // ""' 2>/dev/null || true)
+  raw3=$(echo "$msgs_json" | jq -r '.items[-3].authorDetails.displayName // ""' 2>/dev/null || true)
+  raw4=$(echo "$msgs_json" | jq -r '.items[-4].authorDetails.displayName // ""' 2>/dev/null || true)
+  raw5=$(echo "$msgs_json" | jq -r '.items[-5].authorDetails.displayName // ""' 2>/dev/null || true)
+
+  [ -n "$raw1" ] && VIEWER1=$(sanitize_name "$raw1")
+  [ -n "$raw2" ] && VIEWER2=$(sanitize_name "$raw2")
+  [ -n "$raw3" ] && VIEWER3=$(sanitize_name "$raw3")
+  [ -n "$raw4" ] && VIEWER4=$(sanitize_name "$raw4")
+  [ -n "$raw5" ] && VIEWER5=$(sanitize_name "$raw5")
+
+  echo "Chat updated: $VIEWER1 | $VIEWER2 | $VIEWER3"
+}
+
+# قيم اولية للمشاهدين قبل ما يبدا البث
+VIEWER1="في انتظار الدردشة"
+VIEWER2="---"
+VIEWER3="---"
+VIEWER4="---"
+VIEWER5="---"
+
+# محاولة اولى لجلب معرف الدردشة
+fetch_live_chat_id
+
 echo "Starting stream loop..."
 
 # ============================================================
-# 6. تهيئة المتغيرات الاولية
+# 7. تهيئة المتغيرات الاولية
 # ============================================================
 CURRENT_NEWS="${NEWS[$RANDOM % ${#NEWS[@]}]}"
 CURRENT_MOTIV="${MOTIVATION[$RANDOM % ${#MOTIVATION[@]}]}"
 CURRENT_RIDDLE="${RIDDLES[$RANDOM % ${#RIDDLES[@]}]}"
 CURRENT_CTA="${CTA[$RANDOM % ${#CTA[@]}]}"
-
 RIDDLE_Q="${CURRENT_RIDDLE%%||*}"
 RIDDLE_A="${CURRENT_RIDDLE##*||}"
 
-LOOP_COUNT=0
+LAST_CHAT_FETCH=0
+LAST_CHATID_FETCH=0
 
 # ============================================================
-# 7. اللوب الرئيسي
+# 8. اللوب الرئيسي
 # ============================================================
 while true; do
-  LOOP_COUNT=$((LOOP_COUNT + 1))
 
   # تحديث النصوص كل 3 دقايق
   if (( SECONDS % 180 < 32 )); then
@@ -211,6 +280,19 @@ while true; do
     echo "Updated stats: $SUBS subs / $VIEWS views"
   fi
 
+  # اعادة محاولة جلب معرف الدردشة كل 5 دقايق لو لم يوجد بعد
+  if [ -z "$LIVE_CHAT_ID" ] && (( SECONDS - LAST_CHATID_FETCH > 300 )); then
+    LAST_CHATID_FETCH=$SECONDS
+    fetch_live_chat_id
+  fi
+
+  # تحديث قائمة المشاهدين من الدردشة كل دقيقتين
+  if (( SECONDS - LAST_CHAT_FETCH > 120 )); then
+    LAST_CHAT_FETCH=$SECONDS
+    fetch_chat_viewers &
+    wait $! 2>/dev/null || true
+  fi
+
   # فحص النت
   if ! curl -s --max-time 5 https://www.google.com >/dev/null 2>&1; then
     echo "No internet, waiting..."
@@ -222,12 +304,16 @@ while true; do
   printf '%s' "$CURRENT_NEWS"   > /tmp/taki_news.txt
   printf '%s' "$CURRENT_MOTIV"  > /tmp/taki_motiv.txt
   printf '%s' "$RIDDLE_Q"       > /tmp/taki_riddle_q.txt
-  printf '%s' "$RIDDLE_A"       > /tmp/taki_riddle_a.txt
   printf '%s' "$CURRENT_CTA"    > /tmp/taki_cta.txt
+  printf '%s' "$VIEWER1"        > /tmp/taki_v1.txt
+  printf '%s' "$VIEWER2"        > /tmp/taki_v2.txt
+  printf '%s' "$VIEWER3"        > /tmp/taki_v3.txt
+  printf '%s' "$VIEWER4"        > /tmp/taki_v4.txt
+  printf '%s' "$VIEWER5"        > /tmp/taki_v5.txt
 
   BAR_WIDTH=$((800 * PERCENT / 100))
 
-  # تحديد ما يظهر في الشريط السفلي: لغز او CTA بالتناوب كل دقيقة
+  # تحديد الشريط السفلي: لغز او CTA بالتناوب كل دقيقة
   if (( SECONDS % 120 < 60 )); then
     printf '%s' "$RIDDLE_Q"    > /tmp/taki_ticker.txt
     TICKER_LABEL="لغز تاكي"
@@ -248,6 +334,7 @@ while true; do
     -f flv "rtmps://a.rtmp.youtube.com:443/live2/$YOUTUBE_STREAM_KEY" &
     sleep 300
     kill $! 2>/dev/null || true
+    continue
   fi
 
   # ============================================================
@@ -268,43 +355,55 @@ drawbox=x=55:y=195:w=870:h=6:color=0x00f5ff@1:t=fill,
 drawbox=x=55:y=195:w=6:h=800:color=0x00f5ff@1:t=fill,
 drawbox=x=919:y=195:w=6:h=800:color=0x00f5ff@0.3:t=fill,
 drawtext=text='احصائيات القناة':fontcolor=0x00f5ff:fontsize=38:x=80:y=215,
-drawbox=x=80:y=265:w=820:h=2:color=0x00f5ff@0.5:t=fill,
-drawtext=text='المشتركين':fontcolor=0xaaaaaa:fontsize=30:x=80:y=285,
-drawtext=text='${SUBS}':fontcolor=0xff0080:fontsize=100:x=80:y=320,
-drawbox=x=80:y=440:w=820:h=2:color=0x333366@1:t=fill,
-drawtext=text='الهدف\: ${GOAL} مشترك':fontcolor=white:fontsize=30:x=80:y=460,
-drawbox=x=80:y=500:w=820:h=36:color=0x222244@1:t=fill,
-drawbox=x=80:y=500:w=${BAR_WIDTH}:h=36:color=0x00ff88@1:t=fill,
-drawtext=text='${PERCENT}%%':fontcolor=0x0a0a0a:fontsize=24:x=460:y=507,
-drawtext=text='باقي ${LEFT} للهدف':fontcolor=0xffd700:fontsize=30:x=80:y=556,
-drawbox=x=80:y=600:w=820:h=2:color=0x333366@1:t=fill,
-drawtext=text='المشاهدات':fontcolor=0xaaaaaa:fontsize=28:x=80:y=618,
-drawtext=text='${VIEWS}':fontcolor=0x00f5ff:fontsize=44:x=80:y=655,
-drawbox=x=80:y=718:w=820:h=2:color=0x333366@1:t=fill,
-drawtext=text='اضغط الجرس لا تفوتك':fontcolor=0xffd700:fontsize=26:x=80:y=730,
-drawtext=text='كل جديد هنا اولا':fontcolor=0x00ff88:fontsize=26:x=80:y=765,
-drawbox=x=80:y=820:w=820:h=2:color=0x333366@1:t=fill,
-drawtext=text='شارك البث مع اصحابك':fontcolor=white:fontsize=26:x=80:y=835,
-drawtext=text='وساعدنا نوصلو للهدف':fontcolor=0xaaaaaa:fontsize=26:x=80:y=870,
-drawbox=x=960:y=195:w=920:h=390:color=0x0d0d2b@0.92:t=fill,
+drawbox=x=80:y=262:w=820:h=2:color=0x00f5ff@0.5:t=fill,
+drawtext=text='المشتركين':fontcolor=0xaaaaaa:fontsize=28:x=80:y=278,
+drawtext=text='${SUBS}':fontcolor=0xff0080:fontsize=95:x=80:y=312,
+drawbox=x=80:y=425:w=820:h=2:color=0x333366@1:t=fill,
+drawtext=text='الهدف\: ${GOAL} مشترك':fontcolor=white:fontsize=28:x=80:y=440,
+drawbox=x=80:y=478:w=820:h=34:color=0x222244@1:t=fill,
+drawbox=x=80:y=478:w=${BAR_WIDTH}:h=34:color=0x00ff88@1:t=fill,
+drawtext=text='${PERCENT}%%':fontcolor=0x0a0a0a:fontsize=22:x=455:y=485,
+drawtext=text='باقي ${LEFT} للهدف':fontcolor=0xffd700:fontsize=28:x=80:y=526,
+drawbox=x=80:y=568:w=820:h=2:color=0x333366@1:t=fill,
+drawtext=text='المشاهدات':fontcolor=0xaaaaaa:fontsize=26:x=80:y=582,
+drawtext=text='${VIEWS}':fontcolor=0x00f5ff:fontsize=42:x=80:y=615,
+drawbox=x=80:y=670:w=820:h=2:color=0xffd700@0.6:t=fill,
+drawbox=x=80:y=673:w=820:h=48:color=0x1a1a40@0.8:t=fill,
+drawtext=text='المشاركون في الدردشة':fontcolor=0xffd700:fontsize=26:x=90:y=680,
+drawbox=x=80:y=728:w=820:h=2:color=0x333366@0.8:t=fill,
+drawtext=textfile='/tmp/taki_v1.txt':fontcolor=0x00ff88:fontsize=24:x=100:y=740,
+drawtext=text=' ':fontcolor=0x555577:fontsize=22:x=92:y=770,
+drawtext=textfile='/tmp/taki_v2.txt':fontcolor=white:fontsize=24:x=100:y=775,
+drawtext=text=' ':fontcolor=0x555577:fontsize=22:x=92:y=805,
+drawtext=textfile='/tmp/taki_v3.txt':fontcolor=0xaaaaaa:fontsize=24:x=100:y=810,
+drawtext=text=' ':fontcolor=0x555577:fontsize=22:x=92:y=840,
+drawtext=textfile='/tmp/taki_v4.txt':fontcolor=0xaaaaaa:fontsize=24:x=100:y=845,
+drawtext=text=' ':fontcolor=0x555577:fontsize=22:x=92:y=875,
+drawtext=textfile='/tmp/taki_v5.txt':fontcolor=0x777799:fontsize=24:x=100:y=878,
+drawbox=x=80:y=920:w=820:h=2:color=0x333366@0.5:t=fill,
+drawtext=text='فعل الجرس لا تفوتك اي جديد':fontcolor=0xffd700:fontsize=22:x=80:y=932,
+drawtext=text='شارك البث مع اصدقاءك':fontcolor=0x00ff88:fontsize=22:x=80:y=960,
+drawbox=x=960:y=195:w=920:h=385:color=0x0d0d2b@0.92:t=fill,
 drawbox=x=960:y=195:w=920:h=6:color=0xff0080@1:t=fill,
-drawbox=x=960:y=195:w=6:h=390:color=0xff0080@0.5:t=fill,
+drawbox=x=960:y=195:w=6:h=385:color=0xff0080@0.5:t=fill,
 drawtext=text='اخبار DZ المضحكة':fontcolor=0xff0080:fontsize=36:x=985:y=215,
-drawbox=x=985:y=263:w=870:h=2:color=0xff0080@0.5:t=fill,
-drawtext=textfile='/tmp/taki_news.txt':fontcolor=white:fontsize=27:x=985:y=282:line_spacing=8,
-drawbox=x=960:y=600:w=920:h=390:color=0x0d0d2b@0.92:t=fill,
-drawbox=x=960:y=600:w=920:h=6:color=0x4a00e0@1:t=fill,
-drawbox=x=960:y=600:w=6:h=390:color=0x4a00e0@0.5:t=fill,
-drawtext=text='جرعة تحفيز':fontcolor=0x8b5cf6:fontsize=36:x=985:y=620,
-drawbox=x=985:y=668:w=870:h=2:color=0x4a00e0@0.5:t=fill,
-drawtext=textfile='/tmp/taki_motiv.txt':fontcolor=white:fontsize=27:x=985:y=688:line_spacing=8,
+drawbox=x=985:y=262:w=870:h=2:color=0xff0080@0.5:t=fill,
+drawtext=textfile='/tmp/taki_news.txt':fontcolor=white:fontsize=27:x=985:y=280:line_spacing=8,
+drawbox=x=960:y=595:w=920:h=410:color=0x0d0d2b@0.92:t=fill,
+drawbox=x=960:y=595:w=920:h=6:color=0x4a00e0@1:t=fill,
+drawbox=x=960:y=595:w=6:h=410:color=0x4a00e0@0.5:t=fill,
+drawtext=text='جرعة تحفيز':fontcolor=0x8b5cf6:fontsize=36:x=985:y=615,
+drawbox=x=985:y=662:w=870:h=2:color=0x4a00e0@0.5:t=fill,
+drawtext=textfile='/tmp/taki_motiv.txt':fontcolor=white:fontsize=27:x=985:y=680:line_spacing=8,
 drawbox=x=985:y=820:w=870:h=2:color=0x4a00e0@0.3:t=fill,
-drawtext=text='دير لايك وفعل الجرس':fontcolor=0xaaaaaa:fontsize=24:x=985:y=840,
+drawtext=text='اجوبة اللغاز في الكومنت':fontcolor=0xaaaaaa:fontsize=22:x=985:y=835,
+drawtext=text='دير لايك وفعل الجرس':fontcolor=0x8b5cf6:fontsize=22:x=985:y=865,
+drawtext=text='اشترك وشارك مع صاحبك':fontcolor=0xaaaaaa:fontsize=22:x=985:y=895,
 drawbox=x=0:y=1020:w=1920:h=60:color=0x1a0050@0.97:t=fill,
 drawbox=x=0:y=1020:w=1920:h=3:color=0xffd700@0.8:t=fill,
-drawtext=textfile='/tmp/taki_ticker_label.txt':fontcolor=${TICKER_COLOR}:fontsize=26:x=20:y=1035,
-drawtext=text=' | ':fontcolor=0x555577:fontsize=26:x=160:y=1035,
-drawtext=textfile='/tmp/taki_ticker.txt':fontcolor=white:fontsize=26:x=190:y=1035
+drawtext=textfile='/tmp/taki_ticker_label.txt':fontcolor=${TICKER_COLOR}:fontsize=26:x=20:y=1033,
+drawtext=text=' | ':fontcolor=0x444466:fontsize=26:x=165:y=1033,
+drawtext=textfile='/tmp/taki_ticker.txt':fontcolor=white:fontsize=26:x=195:y=1033
 " \
   -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -r 1 -g 2 -b:v 1200k \
   -c:a aac -b:a 32k -ar 44100 \

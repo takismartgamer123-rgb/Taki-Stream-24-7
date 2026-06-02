@@ -434,7 +434,7 @@ drawtext=text=' | ':fontcolor=0x444466:fontsize=26:x=165:y=1033,
 drawtext=textfile='/tmp/taki_ticker.txt':fontcolor=white:fontsize=26:x=195:y=1033
 " \
   -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -r 1 -g 2 -b:v 1200k \
-  -c:a aac -b:a 32k -ar 44100 \
+  -an \
   -f flv "rtmps://a.rtmp.youtube.com:443/live2/$YOUTUBE_STREAM_KEY" || true
 
   sleep 30
